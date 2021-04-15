@@ -11,8 +11,11 @@ import (
 
 var (
 	uuid  = flag.String("uuid", "", "The value of uuid")
-	allow = flag.Bool("allow", true, "Allow request")
+	allow = flag.Int("allow", -1, "Allow request")
 	app   = flag.String("app", "", "Control application")
+	ask   = flag.Bool("ask", false, "Whether to ask every time the message is processed")
+	count = -1
+	pid   = ""
 )
 
 func main() {
@@ -45,7 +48,7 @@ func main() {
 		for {
 			select {
 			case sig := <-signalCh:
-				log.Printf("sig: %#v\n", sig)
+				// log.Printf("sig: %#v\n", sig)
 				if sig.Path == "/com/deepin/daemon/ResourceManager" &&
 					sig.Name == "com.deepin.daemon.ResourceManager.Notification" {
 					var subscrber []string
@@ -55,8 +58,25 @@ func main() {
 						log.Println("WARN:", err)
 					}
 					if ischeckApp(msg, *app) {
-						err = obj.Call("com.deepin.daemon.ResourceManager.AllowRequest", 0, *uuid, msg, allow).Err
-						fmt.Println("禁用", msg, *app)
+						switch *allow {
+						case 1:
+							err = obj.Call("com.deepin.daemon.ResourceManager.AllowRequest", 0, *uuid, msg, true).Err
+						case -1:
+							if !isLive() {
+								pid = ""
+								count = -1
+							}
+							if count == 1 {
+								err = obj.Call("com.deepin.daemon.ResourceManager.AllowRequest", 0, *uuid, msg, true).Err
+							} else {
+								fmt.Println("等待", msg, *app)
+								if !*ask {
+									count = 1
+								}
+							}
+						case 0:
+							err = obj.Call("com.deepin.daemon.ResourceManager.AllowRequest", 0, *uuid, msg, false).Err
+						}
 					} else {
 						err = obj.Call("com.deepin.daemon.ResourceManager.AllowRequest", 0, *uuid, msg, true).Err
 					}
@@ -80,9 +100,25 @@ func ischeckApp(msg string, app string) bool {
 	if err != nil {
 		return false
 	}
-	fmt.Println("对比：", string(date), app)
+	fmt.Println("对比：", string(date), app, items[2])
 	if strings.Contains(string(date), app) {
+		if !*ask {
+			if count == -1 {
+				pid = items[2]
+			} else {
+				count = 1
+			}
+		}
 		return true
 	}
 	return false
+}
+
+func isLive() bool {
+	cmdPath := fmt.Sprintf("/proc/%s/cmdline", pid)
+	_, err := ioutil.ReadFile(cmdPath)
+	if err != nil {
+		return false
+	}
+	return true
 }
