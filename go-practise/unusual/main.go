@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"syscall"
 )
 
 var (
@@ -80,7 +81,7 @@ func Handler(filename string) error {
 
 func Exit(filename string) {
 	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGILL, syscall.SIGTERM)
 	s := <-c
 	fmt.Println("截取到中断信号:", s)
 	fmt.Println("...........\n清空文件")
